@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SingaporeEx MRT</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#0a0c12;--surface:#12151f;--border:#1e2535;
+  --text:#dde2f0;--muted:#5a6282;--ocean:#080f1a;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace}
+
+/* ── HEADER ── */
+header{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  height:52px;padding:0 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface);border-bottom:1px solid var(--border);
+}
+h1{font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:800;color:#fff;letter-spacing:-0.5px}
+.hbtns{display:flex;gap:8px}
+.btn{
+  background:none;border:1px solid var(--border);color:var(--text);
+  padding:7px 12px;border-radius:8px;font-family:'JetBrains Mono',monospace;
+  font-size:.72rem;cursor:pointer;transition:background .12s;white-space:nowrap;
+  min-height:36px;
+}
+.btn:active{background:var(--border)}
+.btn.danger{border-color:#3a1818;color:#f87171}
+.btn.danger:active{background:#3a1818}
+
+/* ── MAP ── */
+#mapwrap{
+  position:fixed;top:52px;left:0;right:0;bottom:0;
+  overflow:hidden;background:var(--ocean);
+  touch-action:none;
+}
+#mapsvg{position:absolute;top:0;left:0;width:100%;height:100%}
+.station{cursor:pointer}
+
+/* ── ZOOM BUTTONS ── */
+.zc{position:absolute;right:14px;bottom:100px;display:flex;flex-direction:column;gap:6px;z-index:10}
+.zbtn{
+  width:46px;height:46px;background:var(--surface);border:1px solid var(--border);
+  color:var(--text);border-radius:10px;font-size:1.4rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.zbtn:active{background:var(--border)}
+
+/* ── BOTTOM SHEET ── */
+#sheet{
+  position:fixed;bottom:0;left:0;right:0;z-index:200;
+  background:var(--surface);border-top:1px solid var(--border);
+  border-radius:18px 18px 0 0;
+  transform:translateY(calc(100% - 60px));
+  transition:transform .3s cubic-bezier(.4,0,.2,1);
+  max-height:80vh;overflow:hidden;
+}
+#sheet.open{transform:translateY(0)}
+#sheet-handle{
+  height:60px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;cursor:pointer;flex-shrink:0;
+}
+.handle-bar{width:36px;height:4px;background:var(--border);border-radius:2px;position:absolute;left:50%;transform:translateX(-50%);top:10px}
+.sheet-title{font-family:'Syne',sans-serif;font-size:.9rem;font-weight:700;color:#fff}
+.sheet-stats{font-size:.72rem;color:var(--muted)}
+#sheet-body{overflow-y:auto;padding:0 16px 32px;max-height:calc(80vh - 60px)}
+
+/* ── LEVEL LEGEND ── */
+.sec-title{font-size:.58rem;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;margin:14px 0 8px;font-family:'Syne',sans-serif;font-weight:700}
+.lrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #1a1e2a}
+.ldot{width:13px;height:13px;border-radius:50%;flex-shrink:0;border:2.5px solid #ffffff22}
+.llabel{flex:1;font-size:.75rem;line-height:1.3}
+.llabel small{color:var(--muted);font-size:.62rem;display:block}
+.lcnt{color:var(--muted);font-size:.75rem;min-width:24px;text-align:right}
+
+/* ── STATS ── */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:8px 0 16px}
+.stat-box{background:#0d1018;border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center}
+.stat-val{font-family:'Syne',sans-serif;font-size:1.3rem;font-weight:800;color:#fff}
+.stat-lbl{font-size:.58rem;color:var(--muted);margin-top:2px}
+
+/* ── TOAST ── */
+#toast{
+  position:fixed;top:64px;left:50%;transform:translateX(-50%);
+  background:#1a5c3a;color:#34d399;padding:8px 18px;border-radius:20px;
+  font-size:.75rem;opacity:0;transition:opacity .2s;z-index:300;pointer-events:none;
+  white-space:nowrap;
+}
+#toast.show{opacity:1}
+
+/* ── STATION POPUP ── */
+#popup{
+  position:fixed;z-index:250;
+  background:#12151fee;border:1px solid var(--border);
+  padding:10px 14px;border-radius:10px;
+  pointer-events:none;opacity:0;transition:opacity .15s;
+  min-width:140px;max-width:200px;
+}
+#popup.show{opacity:1}
+#pop-name{font-family:'Syne',sans-serif;font-weight:700;font-size:.88rem;margin-bottom:3px}
+#pop-lines{color:var(--muted);font-size:.62rem;margin-bottom:4px}
+#pop-level{font-size:.72rem}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚇 SingaporeEx MRT</h1>
+  <div class="hbtns">
+    <button class="btn" onclick="copyURL()">🔗 Share</button>
+    <button class="btn danger" onclick="resetAll()">↺</button>
+  </div>
+</header>
+
+<div id="mapwrap">
+  <svg id="mapsvg" xmlns="http://www.w3.org/2000/svg">
+    <g id="gtracks"></g>
+    <g id="grings"></g>
+    <g id="gdots"></g>
+    <g id="glabels"></g>
+  </svg>
+  <div class="zc">
+    <button class="zbtn" onclick="doZoom(1.3)">+</button>
+    <button class="zbtn" onclick="doZoom(0.77)">−</button>
+    <button class="zbtn" onclick="resetView()">⌂</button>
+  </div>
+</div>
+
+<!-- Bottom Sheet -->
+<div id="sheet">
+  <div id="sheet-handle" onclick="toggleSheet()">
+    <div class="handle-bar"></div>
+    <span class="sheet-title">統計 · Legend</span>
+    <span class="sheet-stats" id="sheet-summary">タップして開く ↑</span>
+  </div>
+  <div id="sheet-body">
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-val" id="stot">—</div><div class="stat-lbl">Total</div></div>
+      <div class="stat-box"><div class="stat-val" id="svis">0</div><div class="stat-lbl">訪問済み</div></div>
+      <div class="stat-box"><div class="stat-val" id="spct">0%</div><div class="stat-lbl">Coverage</div></div>
+    </div>
+
+    <div class="sec-title">Level</div>
+    <div class="lrow"><div class="ldot" style="background:#2a2e42;border-color:#4a5068"></div><div class="llabel">0 — 未訪問<small>Not visited</small></div><div class="lcnt" id="c0">0</div></div>
+    <div class="lrow"><div class="ldot" style="background:#2d1a5c;border-color:#a78bfa"></div><div class="llabel">1 — 通過<small>Passed through</small></div><div class="lcnt" id="c1">0</div></div>
+    <div class="lrow"><div class="ldot" style="background:#1a3a5c;border-color:#60a5fa"></div><div class="llabel">2 — 乗り換え<small>Transfer only</small></div><div class="lcnt" id="c2">0</div></div>
+    <div class="lrow"><div class="ldot" style="background:#1a5c3a;border-color:#34d399"></div><div class="llabel">3 — 目的のある訪問<small>Purposeful visit</small></div><div class="lcnt" id="c3">0</div></div>
+    <div class="lrow"><div class="ldot" style="background:#5c4a1a;border-color:#fbbf24"></div><div class="llabel">4 — 宿泊<small>Stayed nearby</small></div><div class="lcnt" id="c4">0</div></div>
+    <div class="lrow"><div class="ldot" style="background:#5c1a1a;border-color:#f87171"></div><div class="llabel">5 — 居住<small>Lived nearby</small></div><div class="lcnt" id="c5">0</div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="popup"><div id="pop-name"></div><div id="pop-lines"></div><div id="pop-level"></div></div>
+
+<script>
+const RAW=[
+  {id:"EW1",n:"Pasir Ris",line:"EW",lat:1.3731,lon:103.9494},
+  {id:"EW2",n:"Tampines",line:"EW",lat:1.3535,lon:103.9452},
+  {id:"EW3",n:"Simei",line:"EW",lat:1.3431,lon:103.9534},
+  {id:"EW4",n:"Tanah Merah",line:"EW",lat:1.3273,lon:103.9462},
+  {id:"EW5",n:"Bedok",line:"EW",lat:1.3240,lon:103.9300},
+  {id:"EW6",n:"Kembangan",line:"EW",lat:1.3208,lon:103.9127},
+  {id:"EW7",n:"Eunos",line:"EW",lat:1.3196,lon:103.9030},
+  {id:"EW8",n:"Paya Lebar",line:"EW",lat:1.3180,lon:103.8922},
+  {id:"EW9",n:"Aljunied",line:"EW",lat:1.3163,lon:103.8831},
+  {id:"EW10",n:"Kallang",line:"EW",lat:1.3112,lon:103.8717},
+  {id:"EW11",n:"Lavender",line:"EW",lat:1.3073,lon:103.8631},
+  {id:"EW12",n:"Bugis",line:"EW",lat:1.3009,lon:103.8565},
+  {id:"EW13",n:"City Hall",line:"EW",lat:1.2931,lon:103.8520},
+  {id:"EW14",n:"Raffles Place",line:"EW",lat:1.2837,lon:103.8514},
+  {id:"EW15",n:"Tanjong Pagar",line:"EW",lat:1.2762,lon:103.8456},
+  {id:"EW16",n:"Outram Park",line:"EW",lat:1.2800,lon:103.8393},
+  {id:"EW17",n:"Tiong Bahru",line:"EW",lat:1.2864,lon:103.8270},
+  {id:"EW18",n:"Redhill",line:"EW",lat:1.2895,lon:103.8166},
+  {id:"EW19",n:"Queenstown",line:"EW",lat:1.2944,lon:103.8062},
+  {id:"EW20",n:"Commonwealth",line:"EW",lat:1.3024,lon:103.7981},
+  {id:"EW21",n:"Buona Vista",line:"EW",lat:1.3074,lon:103.7900},
+  {id:"EW22",n:"Dover",line:"EW",lat:1.3113,lon:103.7786},
+  {id:"EW23",n:"Clementi",line:"EW",lat:1.3152,lon:103.7651},
+  {id:"EW24",n:"Jurong East",line:"EW",lat:1.3331,lon:103.7422},
+  {id:"EW25",n:"Chinese Garden",line:"EW",lat:1.3424,lon:103.7323},
+  {id:"EW26",n:"Lakeside",line:"EW",lat:1.3444,lon:103.7211},
+  {id:"EW27",n:"Boon Lay",line:"EW",lat:1.3387,lon:103.7059},
+  {id:"EW28",n:"Pioneer",line:"EW",lat:1.3378,lon:103.6971},
+  {id:"EW29",n:"Joo Koon",line:"EW",lat:1.3277,lon:103.6785},
+  {id:"EW30",n:"Gul Circle",line:"EW",lat:1.3195,lon:103.6608},
+  {id:"EW31",n:"Tuas Crescent",line:"EW",lat:1.3208,lon:103.6490},
+  {id:"EW32",n:"Tuas West Road",line:"EW",lat:1.3268,lon:103.6399},
+  {id:"EW33",n:"Tuas Link",line:"EW",lat:1.3404,lon:103.6369},
+  {id:"NS2",n:"Bukit Batok",line:"NS",lat:1.3490,lon:103.7494},
+  {id:"NS3",n:"Bukit Gombak",line:"NS",lat:1.3588,lon:103.7516},
+  {id:"NS4",n:"Choa Chu Kang",line:"NS",lat:1.3854,lon:103.7445},
+  {id:"NS5",n:"Yew Tee",line:"NS",lat:1.3969,lon:103.7475},
+  {id:"NS7",n:"Kranji",line:"NS",lat:1.4253,lon:103.7619},
+  {id:"NS8",n:"Marsiling",line:"NS",lat:1.4325,lon:103.7742},
+  {id:"NS9",n:"Woodlands",line:"NS",lat:1.4370,lon:103.7864},
+  {id:"NS10",n:"Admiralty",line:"NS",lat:1.4408,lon:103.8008},
+  {id:"NS11",n:"Sembawang",line:"NS",lat:1.4491,lon:103.8199},
+  {id:"NS12",n:"Canberra",line:"NS",lat:1.4432,lon:103.8298},
+  {id:"NS13",n:"Yishun",line:"NS",lat:1.4294,lon:103.8353},
+  {id:"NS14",n:"Khatib",line:"NS",lat:1.4172,lon:103.8330},
+  {id:"NS15",n:"Yio Chu Kang",line:"NS",lat:1.3817,lon:103.8448},
+  {id:"NS16",n:"Ang Mo Kio",line:"NS",lat:1.3700,lon:103.8494},
+  {id:"NS17",n:"Bishan",line:"NS",lat:1.3510,lon:103.8484},
+  {id:"NS18",n:"Braddell",line:"NS",lat:1.3404,lon:103.8468},
+  {id:"NS19",n:"Toa Payoh",line:"NS",lat:1.3327,lon:103.8474},
+  {id:"NS20",n:"Novena",line:"NS",lat:1.3204,lon:103.8438},
+  {id:"NS21",n:"Newton",line:"NS",lat:1.3127,lon:103.8384},
+  {id:"NS22",n:"Orchard",line:"NS",lat:1.3040,lon:103.8318},
+  {id:"NS23",n:"Somerset",line:"NS",lat:1.3007,lon:103.8388},
+  {id:"NS24",n:"Dhoby Ghaut",line:"NS",lat:1.2990,lon:103.8455},
+  {id:"NS25",n:"City Hall",line:"NS",lat:1.2931,lon:103.8520},
+  {id:"NS26",n:"Raffles Place",line:"NS",lat:1.2837,lon:103.8514},
+  {id:"NS27",n:"Marina Bay",line:"NS",lat:1.2763,lon:103.8546},
+  {id:"NS28",n:"Marina South Pier",line:"NS",lat:1.2710,lon:103.8636},
+  {id:"NE1",n:"HarbourFront",line:"NE",lat:1.2651,lon:103.8203},
+  {id:"NE3",n:"Outram Park",line:"NE",lat:1.2800,lon:103.8393},
+  {id:"NE4",n:"Chinatown",line:"NE",lat:1.2847,lon:103.8444},
+  {id:"NE5",n:"Clarke Quay",line:"NE",lat:1.2882,lon:103.8465},
+  {id:"NE6",n:"Dhoby Ghaut",line:"NE",lat:1.2990,lon:103.8455},
+  {id:"NE7",n:"Little India",line:"NE",lat:1.3066,lon:103.8495},
+  {id:"NE8",n:"Farrer Park",line:"NE",lat:1.3124,lon:103.8539},
+  {id:"NE9",n:"Boon Keng",line:"NE",lat:1.3193,lon:103.8616},
+  {id:"NE10",n:"Potong Pasir",line:"NE",lat:1.3313,lon:103.8688},
+  {id:"NE11",n:"Woodleigh",line:"NE",lat:1.3390,lon:103.8703},
+  {id:"NE12",n:"Serangoon",line:"NE",lat:1.3498,lon:103.8731},
+  {id:"NE13",n:"Kovan",line:"NE",lat:1.3599,lon:103.8855},
+  {id:"NE14",n:"Hougang",line:"NE",lat:1.3712,lon:103.8920},
+  {id:"NE15",n:"Buangkok",line:"NE",lat:1.3832,lon:103.8929},
+  {id:"NE16",n:"Sengkang",line:"NE",lat:1.3915,lon:103.8954},
+  {id:"NE17",n:"Punggol",line:"NE",lat:1.4053,lon:103.9022},
+  {id:"CC2",n:"Bras Basah",line:"CC",lat:1.2966,lon:103.8510},
+  {id:"CC3",n:"Esplanade",line:"CC",lat:1.2935,lon:103.8556},
+  {id:"CC4",n:"Promenade",line:"CC",lat:1.2934,lon:103.8606},
+  {id:"CC5",n:"Nicoll Highway",line:"CC",lat:1.2998,lon:103.8635},
+  {id:"CC6",n:"Stadium",line:"CC",lat:1.3026,lon:103.8751},
+  {id:"CC7",n:"Mountbatten",line:"CC",lat:1.3064,lon:103.8825},
+  {id:"CC8",n:"Dakota",line:"CC",lat:1.3083,lon:103.8884},
+  {id:"CC10",n:"MacPherson",line:"CC",lat:1.3268,lon:103.8902},
+  {id:"CC11",n:"Tai Seng",line:"CC",lat:1.3354,lon:103.8876},
+  {id:"CC12",n:"Bartley",line:"CC",lat:1.3422,lon:103.8800},
+  {id:"CC14",n:"Lorong Chuan",line:"CC",lat:1.3515,lon:103.8640},
+  {id:"CC16",n:"Marymount",line:"CC",lat:1.3486,lon:103.8393},
+  {id:"CC19",n:"Botanic Gardens",line:"CC",lat:1.3223,lon:103.8153},
+  {id:"CC20",n:"Farrer Road",line:"CC",lat:1.3172,lon:103.8076},
+  {id:"CC21",n:"Holland Village",line:"CC",lat:1.3116,lon:103.7960},
+  {id:"CC23",n:"one-north",line:"CC",lat:1.2994,lon:103.7873},
+  {id:"CC24",n:"Kent Ridge",line:"CC",lat:1.2930,lon:103.7847},
+  {id:"CC25",n:"Haw Par Villa",line:"CC",lat:1.2820,lon:103.7820},
+  {id:"CC26",n:"Pasir Panjang",line:"CC",lat:1.2760,lon:103.7917},
+  {id:"CC27",n:"Labrador Park",line:"CC",lat:1.2720,lon:103.8022},
+  {id:"CC28",n:"Telok Blangah",line:"CC",lat:1.2706,lon:103.8094},
+  {id:"CC34",n:"Hume",line:"CC",lat:1.3392,lon:103.7709},
+  {id:"DT1",n:"Bukit Panjang",line:"DT",lat:1.3791,lon:103.7660},
+  {id:"DT2",n:"Cashew",line:"DT",lat:1.3699,lon:103.7659},
+  {id:"DT3",n:"Hillview",line:"DT",lat:1.3622,lon:103.7672},
+  {id:"DT5",n:"Beauty World",line:"DT",lat:1.3411,lon:103.7759},
+  {id:"DT6",n:"King Albert Park",line:"DT",lat:1.3351,lon:103.7834},
+  {id:"DT7",n:"Sixth Avenue",line:"DT",lat:1.3303,lon:103.7975},
+  {id:"DT8",n:"Tan Kah Kee",line:"DT",lat:1.3257,lon:103.8079},
+  {id:"DT10",n:"Stevens",line:"DT",lat:1.3197,lon:103.8263},
+  {id:"DT13",n:"Rochor",line:"DT",lat:1.3044,lon:103.8527},
+  {id:"DT16",n:"Bayfront",line:"DT",lat:1.2822,lon:103.8597},
+  {id:"DT17",n:"Downtown",line:"DT",lat:1.2793,lon:103.8527},
+  {id:"DT18",n:"Telok Ayer",line:"DT",lat:1.2815,lon:103.8479},
+  {id:"DT20",n:"Fort Canning",line:"DT",lat:1.2927,lon:103.8443},
+  {id:"DT21",n:"Bencoolen",line:"DT",lat:1.2986,lon:103.8494},
+  {id:"DT22",n:"Jalan Besar",line:"DT",lat:1.3055,lon:103.8561},
+  {id:"DT23",n:"Bendemeer",line:"DT",lat:1.3132,lon:103.8632},
+  {id:"DT24",n:"Geylang Bahru",line:"DT",lat:1.3215,lon:103.8709},
+  {id:"DT25",n:"Mattar",line:"DT",lat:1.3266,lon:103.8829},
+  {id:"DT27",n:"Ubi",line:"DT",lat:1.3295,lon:103.8993},
+  {id:"DT28",n:"Kaki Bukit",line:"DT",lat:1.3351,lon:103.9082},
+  {id:"DT29",n:"Bedok North",line:"DT",lat:1.3341,lon:103.9185},
+  {id:"DT30",n:"Bedok Reservoir",line:"DT",lat:1.3364,lon:103.9325},
+  {id:"DT31",n:"Tampines West",line:"DT",lat:1.3456,lon:103.9381},
+  {id:"DT33",n:"Tampines East",line:"DT",lat:1.3560,lon:103.9536},
+  {id:"DT34",n:"Upper Changi",line:"DT",lat:1.3418,lon:103.9612},
+  {id:"DT35",n:"Expo",line:"DT",lat:1.3353,lon:103.9614},
+  {id:"TE1",n:"Woodlands North",line:"TE",lat:1.4480,lon:103.7867},
+  {id:"TE3",n:"Woodlands South",line:"TE",lat:1.4247,lon:103.7942},
+  {id:"TE4",n:"Springleaf",line:"TE",lat:1.3984,lon:103.8188},
+  {id:"TE5",n:"Lentor",line:"TE",lat:1.3858,lon:103.8354},
+  {id:"TE6",n:"Mayflower",line:"TE",lat:1.3747,lon:103.8393},
+  {id:"TE7",n:"Bright Hill",line:"TE",lat:1.3625,lon:103.8393},
+  {id:"TE8",n:"Upper Thomson",line:"TE",lat:1.3540,lon:103.8323},
+  {id:"TE12",n:"Napier",line:"TE",lat:1.3061,lon:103.8181},
+  {id:"TE13",n:"Orchard Blvd",line:"TE",lat:1.3027,lon:103.8233},
+  {id:"TE15",n:"Great World",line:"TE",lat:1.2940,lon:103.8274},
+  {id:"TE16",n:"Havelock",line:"TE",lat:1.2888,lon:103.8376},
+  {id:"TE18",n:"Maxwell",line:"TE",lat:1.2793,lon:103.8450},
+  {id:"TE19",n:"Shenton Way",line:"TE",lat:1.2769,lon:103.8500},
+  {id:"TE22",n:"Gardens by the Bay",line:"TE",lat:1.2815,lon:103.8661},
+  {id:"TE23",n:"Tanjong Rhu",line:"TE",lat:1.2964,lon:103.8697},
+  {id:"TE24",n:"Katong Park",line:"TE",lat:1.3008,lon:103.8826},
+  {id:"TE25",n:"Tanjong Katong",line:"TE",lat:1.3040,lon:103.8953},
+  {id:"TE26",n:"Marine Parade",line:"TE",lat:1.3023,lon:103.9057},
+  {id:"TE27",n:"Marine Terrace",line:"TE",lat:1.3060,lon:103.9146},
+  {id:"TE28",n:"Siglap",line:"TE",lat:1.3103,lon:103.9268},
+  {id:"TE29",n:"Bayshore",line:"TE",lat:1.3148,lon:103.9398},
+  {id:"BP7",n:"Petir",line:"BP",lat:1.3807,lon:103.7714},
+  {id:"BP8",n:"Pending",line:"BP",lat:1.3778,lon:103.7765},
+  {id:"BP9",n:"Bangkit",line:"BP",lat:1.3804,lon:103.7813},
+  {id:"BP10",n:"Fajar",line:"BP",lat:1.3840,lon:103.7784},
+  {id:"BP11",n:"Segar",line:"BP",lat:1.3865,lon:103.7726},
+  {id:"BP12",n:"Jelapang",line:"BP",lat:1.3880,lon:103.7659},
+  {id:"BP13",n:"Senja",line:"BP",lat:1.3864,lon:103.7611},
+  {id:"BP14",n:"Ten Mile Junction",line:"BP",lat:1.3839,lon:103.7564},
+  {id:"SE1",n:"Compassvale",line:"SK",lat:1.3945,lon:103.9050},
+  {id:"SE2",n:"Rumbia",line:"SK",lat:1.3958,lon:103.9139},
+  {id:"SE3",n:"Bakau",line:"SK",lat:1.3927,lon:103.9198},
+  {id:"SE4",n:"Kangkar",line:"SK",lat:1.3880,lon:103.9154},
+  {id:"SE5",n:"Ranggung",line:"SK",lat:1.3856,lon:103.9066},
+  {id:"SW1",n:"Cheng Lim",line:"SK",lat:1.3965,lon:103.8960},
+  {id:"SW2",n:"Farmway",line:"SK",lat:1.3975,lon:103.8872},
+  {id:"SW3",n:"Kupang",line:"SK",lat:1.3975,lon:103.8791},
+  {id:"SW4",n:"Thanggam",line:"SK",lat:1.3958,lon:103.8730},
+  {id:"SW5",n:"Fernvale",line:"SK",lat:1.3928,lon:103.8758},
+  {id:"SW6",n:"Layar",line:"SK",lat:1.3904,lon:103.8822},
+  {id:"SW7",n:"Tongkang",line:"SK",lat:1.3912,lon:103.8896},
+  {id:"SW8",n:"Renjong",line:"SK",lat:1.3946,lon:103.8924},
+  {id:"PE1",n:"Cove",line:"PG",lat:1.4026,lon:103.9093},
+  {id:"PE2",n:"Meridian",line:"PG",lat:1.4026,lon:103.9175},
+  {id:"PE3",n:"Coral Edge",line:"PG",lat:1.3999,lon:103.9232},
+  {id:"PE4",n:"Riviera",line:"PG",lat:1.3978,lon:103.9168},
+  {id:"PE5",n:"Kadaloor",line:"PG",lat:1.3993,lon:103.9088},
+  {id:"PE6",n:"Oasis",line:"PG",lat:1.4026,lon:103.9046},
+  {id:"PE7",n:"Damai",line:"PG",lat:1.4066,lon:103.9062},
+  {id:"PW1",n:"Sam Kee",line:"PG",lat:1.4066,lon:103.9022},
+  {id:"PW2",n:"Teck Lee",line:"PG",lat:1.4071,lon:103.8950},
+  {id:"PW3",n:"Punggol Point",line:"PG",lat:1.4126,lon:103.9051},
+  {id:"PW4",n:"Samudera",line:"PG",lat:1.4119,lon:103.9031},
+  {id:"PW5",n:"Nibong",line:"PG",lat:1.4093,lon:103.9022},
+  {id:"PW6",n:"Sumang",line:"PG",lat:1.4076,lon:103.8975},
+  {id:"PW7",n:"Soo Teck",line:"PG",lat:1.4058,lon:103.8948},
+  {id:"JS2",n:"CCK West",line:"JRL",lat:1.3880,lon:103.7380},
+  {id:"JS3",n:"Tengah",line:"JRL",lat:1.3757,lon:103.7370},
+  {id:"JS4",n:"Tengah Plantation",line:"JRL",lat:1.3655,lon:103.7290},
+  {id:"JS5",n:"Tengah Park",line:"JRL",lat:1.3560,lon:103.7260},
+  {id:"JS6",n:"Bukit Batok West",line:"JRL",lat:1.3494,lon:103.7338},
+  {id:"JS7",n:"Tawas",line:"JRL",lat:1.3440,lon:103.7280},
+  {id:"JW1",n:"Gek Poh",line:"JRL",lat:1.3484,lon:103.7059},
+  {id:"JW2",n:"Teck Whye",line:"JRL",lat:1.3537,lon:103.7121},
+  {id:"JW3",n:"Nanyang Gateway",line:"JRL",lat:1.3477,lon:103.7194},
+  {id:"JW4",n:"Nanyang Crescent",line:"JRL",lat:1.3401,lon:103.7167},
+  {id:"JW5",n:"Pandan Reservoir",line:"JRL",lat:1.3336,lon:103.7169},
+  {id:"JE1",n:"Jurong Town Hall",line:"JRL",lat:1.3270,lon:103.7393},
+  {id:"JE2",n:"Jurong Pier",line:"JRL",lat:1.3188,lon:103.7296},
+  {id:"SX1",n:"VivoCity",line:"SX",lat:1.2638,lon:103.8225},
+  {id:"SX2",n:"Sentosa (Waterfront)",line:"SX",lat:1.2595,lon:103.8218},
+  {id:"SX3",n:"Imbiah",line:"SX",lat:1.2565,lon:103.8173},
+  {id:"SX4",n:"Beach Station",line:"SX",lat:1.2510,lon:103.8197},
+];
+
+const INTERCHANGES={
+  "Jurong East":["EW","NS","JRL"],"Bugis":["EW","DT"],"City Hall":["EW","NS"],
+  "Raffles Place":["EW","NS"],"Outram Park":["EW","NE","TE"],"Paya Lebar":["EW","CC"],
+  "Dhoby Ghaut":["NS","NE","CC"],"HarbourFront":["NE","CC"],"Serangoon":["NE","CC"],
+  "Bishan":["NS","CC"],"Botanic Gardens":["CC","DT"],"Buona Vista":["EW","CC"],
+  "Newton":["NS","DT"],"Little India":["NE","DT"],"MacPherson":["CC","DT"],
+  "Promenade":["CC","DT"],"Chinatown":["NE","DT"],"Bayfront":["CC","DT"],
+  "Caldecott":["CC","TE"],"Stevens":["DT","TE"],"Orchard":["NS","TE"],
+  "Marina Bay":["NS","TE"],"Bukit Panjang":["DT","BP"],"Sengkang":["NE","SK"],
+  "Punggol":["NE","PG"],"Woodlands":["NS","TE"],"Tampines":["EW","DT"],
+  "Choa Chu Kang":["NS","JRL"],
+};
+
+const seenNames={};const STATIONS=[];
+RAW.forEach(r=>{
+  if(!seenNames[r.n]){seenNames[r.n]=1;STATIONS.push({...r,lines:INTERCHANGES[r.n]||[r.line]});}
+});
+
+const LVL_RING=["","#a78bfa","#60a5fa","#34d399","#fbbf24","#fb923c","#f87171"];
+const LVL_FILL=["","#2d1a5c","#1a3a5c","#1a5c3a","#5c4a1a","#5c2e10","#5c1a1a"];
+const LVL_LBL=["未訪問","通過","乗り換え","目的のある訪問","宿泊","居住"];
+
+const levels={};STATIONS.forEach(s=>levels[s.id]=0);
+
+let vx=0,vy=0,vw=800,vh=580;
+const LON0=103.60,LON1=104.02,LAT0=1.20,LAT1=1.47;
+function prj(lon,lat){return[vx+(lon-LON0)/(LON1-LON0)*vw,vy+(1-(lat-LAT0)/(LAT1-LAT0))*vh];}
+
+const gT=document.getElementById('gtracks');
+const gR=document.getElementById('grings');
+const gD=document.getElementById('gdots');
+const gL=document.getElementById('glabels');
+
+const TRACK_ORDER={
+  EW:["EW1","EW2","EW3","EW4","EW5","EW6","EW7","EW8","EW9","EW10","EW11","EW12","EW13","EW14","EW15","EW16","EW17","EW18","EW19","EW20","EW21","EW22","EW23","EW24","EW25","EW26","EW27","EW28","EW29","EW30","EW31","EW32","EW33"],
+  NS:["NS2","NS3","NS4","NS5","NS7","NS8","NS9","NS10","NS11","NS12","NS13","NS14","NS15","NS16","NS17","NS18","NS19","NS20","NS21","NS22","NS23","NS24","NS25","NS26","NS27","NS28"],
+  NE:["NE1","NE3","NE4","NE5","NE6","NE7","NE8","NE9","NE10","NE11","NE12","NE13","NE14","NE15","NE16","NE17"],
+  CC:["CC29","CC28","CC27","CC26","CC25","CC24","CC23","CC22","CC21","CC20","CC19","CC17","CC16","CC15","CC14","CC13","CC12","CC11","CC10","CC9","CC8","CC7","CC6","CC5","CC4","CC3","CC2","CC1","CC34"],
+  DT:["DT1","DT2","DT3","DT5","DT6","DT7","DT8","DT9","DT10","DT11","DT12","DT13","DT14","DT15","DT16","DT17","DT18","DT19","DT20","DT21","DT22","DT23","DT24","DT25","DT26","DT27","DT28","DT29","DT30","DT31","DT32","DT33","DT34","DT35"],
+  TE:["TE1","TE2","TE3","TE4","TE5","TE6","TE7","TE8","TE9","TE11","TE12","TE13","TE14","TE15","TE16","TE17","TE18","TE19","TE20","TE22","TE23","TE24","TE25","TE26","TE27","TE28","TE29"],
+  BP:["BP6","BP7","BP8","BP9","BP10","BP11","BP12","BP13","BP14"],
+  SK:["STC","SE1","SE2","SE3","SE4","SE5","SW8","SW7","SW6","SW5","SW4","SW3","SW2","SW1"],
+  PG:["PTC","PE1","PE2","PE3","PE4","PE5","PE6","PE7","PW1","PW2","PW3","PW4","PW5","PW6","PW7"],
+  JRL:["JS1","JS2","JS3","JS4","JS5","JS6","JS7","JW1","JW2","JW3","JW4","JW5","JE0","JE1","JE2"],
+  SX:["SX1","SX2","SX3","SX4"],
+};
+const rawById={};RAW.forEach(r=>rawById[r.id]=r);
+
+function buildTracks(){
+  gT.innerHTML='';
+  Object.entries(TRACK_ORDER).forEach(([line,ids])=>{
+    const pts=ids.map(id=>rawById[id]?prj(rawById[id].lon,rawById[id].lat).join(','):null).filter(Boolean);
+    if(pts.length<2)return;
+    const pl=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    pl.setAttribute('points',pts.join(' '));
+    pl.setAttribute('stroke','#3a4258');
+    pl.setAttribute('stroke-width',line==='SX'?'2':'3');
+    pl.setAttribute('fill','none');
+    pl.setAttribute('stroke-linecap','round');
+    pl.setAttribute('stroke-linejoin','round');
+    pl.setAttribute('opacity',line==='JRL'?'0.4':'0.55');
+    if(line==='JRL')pl.setAttribute('stroke-dasharray','6 4');
+    gT.appendChild(pl);
+  });
+}
+
+const dotEls={},ringEls={},lblEls={};
+
+function getBaseFill(s){return s.lines.length>1?'#c8ccd8':'#5a6282';}
+
+function buildStations(){
+  gR.innerHTML='';gD.innerHTML='';gL.innerHTML='';
+  STATIONS.forEach(s=>{
+    const[x,y]=prj(s.lon,s.lat);
+    const ic=s.lines.length>1;
+    const isLRT=['BP','SK','PG'].includes(s.lines[0])&&s.lines.length===1;
+    const r=ic?11:isLRT?7:9;
+
+    // ring
+    const ring=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    ring.setAttribute('cx',x);ring.setAttribute('cy',y);ring.setAttribute('r',r+6);
+    ring.setAttribute('stroke',LVL_RING[levels[s.id]]||'none');
+    ring.setAttribute('fill','none');ring.setAttribute('stroke-width','3');
+    ring.setAttribute('opacity',levels[s.id]?'1':'0');
+    gR.appendChild(ring);ringEls[s.id]=ring;
+
+    // hit area
+    const hit=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    hit.setAttribute('cx',x);hit.setAttribute('cy',y);hit.setAttribute('r',r+14);
+    hit.setAttribute('fill','transparent');
+    gD.appendChild(hit);
+
+    // dot
+    const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('r',r);
+    dot.setAttribute('fill',getBaseFill(s));
+    dot.setAttribute('stroke','#080f1a');dot.setAttribute('stroke-width',ic?'2':'1.5');
+    if(s.lines[0]==='JRL')dot.setAttribute('fill-opacity','0.55');
+    gD.appendChild(dot);dotEls[s.id]=dot;
+
+    // label
+    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lbl.setAttribute('x',x+r+5);lbl.setAttribute('y',y);
+    lbl.setAttribute('font-size','8');lbl.setAttribute('fill','#ffffffaa');
+    lbl.setAttribute('dominant-baseline','middle');
+    lbl.setAttribute('font-family','JetBrains Mono,monospace');
+    lbl.setAttribute('pointer-events','none');
+    lbl.textContent=s.n;
+    gL.appendChild(lbl);lblEls[s.id]=lbl;
+
+    // tap handler
+    [hit,dot].forEach(el=>{
+      el.addEventListener('click',e=>{
+        e.stopPropagation();
+        if(wasDragging)return;
+        const nxt=(levels[s.id]+1)%6;
+        setLv(s.id,nxt);updateURL();updateStats();
+        showPopup(s,x,y);
+      });
+    });
+  });
+}
+
+function showPopup(s,x,y){
+  const pop=document.getElementById('popup');
+  document.getElementById('pop-name').textContent=s.n;
+  document.getElementById('pop-lines').textContent=s.lines.join(' · ');
+  const lv=levels[s.id];
+  document.getElementById('pop-level').textContent=`Level ${lv} — ${LVL_LBL[lv]}`;
+  pop.style.left=Math.min(x+20,window.innerWidth-160)+'px';
+  pop.style.top=Math.max(y-40,60)+'px';
+  pop.classList.add('show');
+  clearTimeout(pop._t);pop._t=setTimeout(()=>pop.classList.remove('show'),1800);
+}
+
+function setLv(id,lv){
+  levels[id]=lv;
+  const ring=ringEls[id];const dot=dotEls[id];
+  if(ring){ring.setAttribute('stroke',lv?LVL_RING[lv]:'none');ring.setAttribute('opacity',lv?'1':'0');}
+  if(dot){
+    if(lv>0){dot.setAttribute('fill',LVL_FILL[lv]);dot.setAttribute('stroke',LVL_RING[lv]);}
+    else{const s=STATIONS.find(x=>x.id===id);dot.setAttribute('fill',getBaseFill(s));dot.setAttribute('stroke','#080f1a');}
+  }
+}
+
+function updateStats(){
+  const cnt=[0,0,0,0,0,0];
+  STATIONS.forEach(s=>{cnt[levels[s.id]]++;});
+  for(let i=0;i<6;i++){const el=document.getElementById('c'+i);if(el)el.textContent=cnt[i];}
+  const vis=cnt[3]+cnt[4]+cnt[5];const tot=STATIONS.length;
+  document.getElementById('stot').textContent=tot;
+  document.getElementById('svis').textContent=vis;
+  const pct=Math.round(vis/tot*100);
+  document.getElementById('spct').textContent=pct+'%';
+  document.getElementById('sheet-summary').textContent=`訪問済み ${vis}/${tot} (${pct}%)`;
+}
+
+function encodeState(){return STATIONS.map(s=>levels[s.id]).join('');}
+function decodeState(h){
+  const str=h.replace('#','');
+  STATIONS.forEach((s,i)=>{const v=parseInt(str[i]||'0');levels[s.id]=isNaN(v)?0:Math.min(v,5);});
+}
+function updateURL(){history.replaceState(null,'','#'+encodeState());}
+function resetAll(){STATIONS.forEach(s=>setLv(s.id,0));updateURL();updateStats();}
+function copyURL(){
+  navigator.clipboard.writeText(location.href).then(()=>{
+    const t=document.getElementById('toast');
+    t.textContent='✓ URLをコピーしました';t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),2000);
+  });
+}
+
+// ── Bottom sheet ──
+let sheetOpen=false;
+function toggleSheet(){
+  sheetOpen=!sheetOpen;
+  document.getElementById('sheet').classList.toggle('open',sheetOpen);
+}
+
+function rebuildPos(){
+  buildTracks();
+  STATIONS.forEach(s=>{
+    const[x,y]=prj(s.lon,s.lat);
+    const ic=s.lines.length>1;
+    const isLRT=['BP','SK','PG'].includes(s.lines[0])&&s.lines.length===1;
+    const r=ic?11:isLRT?7:9;
+    if(dotEls[s.id]){dotEls[s.id].setAttribute('cx',x);dotEls[s.id].setAttribute('cy',y);}
+    if(ringEls[s.id]){ringEls[s.id].setAttribute('cx',x);ringEls[s.id].setAttribute('cy',y);}
+    if(lblEls[s.id]){lblEls[s.id].setAttribute('x',x+r+5);lblEls[s.id].setAttribute('y',y);}
+    // update hit area too
+  });
+  // rebuild hit areas positions
+  const hits=gD.querySelectorAll('circle:not([fill])');
+}
+
+// ── Touch / Pan / Pinch ──
+const wrap=document.getElementById('mapwrap');
+let drag=false,wasDragging=false,ds=null,vs=null;
+let pinching=false,pinchD0=0,pinchMid=null,vxP=0,vyP=0,vwP=0,vhP=0;
+
+function dist2(t){
+  return Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+}
+function mid2(t){
+  const r=wrap.getBoundingClientRect();
+  return{x:(t[0].clientX+t[1].clientX)/2-r.left,y:(t[0].clientY+t[1].clientY)/2-r.top};
+}
+
+wrap.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){
+    drag=true;wasDragging=false;
+    ds={x:e.touches[0].clientX,y:e.touches[0].clientY};vs={x:vx,y:vy};
+  } else if(e.touches.length===2){
+    drag=false;pinching=true;
+    pinchD0=dist2(e.touches);pinchMid=mid2(e.touches);
+    vxP=vx;vyP=vy;vwP=vw;vhP=vh;
+  }
+},{passive:true});
+
+wrap.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===1&&drag){
+    const dx=e.touches[0].clientX-ds.x;
+    const dy=e.touches[0].clientY-ds.y;
+    if(Math.abs(dx)>4||Math.abs(dy)>4)wasDragging=true;
+    vx=vs.x+dx;vy=vs.y+dy;rebuildPos();
+  } else if(e.touches.length===2&&pinching){
+    const d=dist2(e.touches);
+    const f=d/pinchD0;
+    const m=mid2(e.touches);
+    vw=vwP*f;vh=vhP*f;
+    vx=m.x-(pinchMid.x-vxP)*f;
+    vy=m.y-(pinchMid.y-vyP)*f;
+    rebuildPos();
+  }
+},{passive:false});
+
+wrap.addEventListener('touchend',e=>{
+  if(e.touches.length===0){drag=false;pinching=false;}
+  if(e.touches.length===1&&pinching){
+    pinching=false;drag=true;
+    ds={x:e.touches[0].clientX,y:e.touches[0].clientY};vs={x:vx,y:vy};
+  }
+},{passive:true});
+
+// Mouse support for desktop
+wrap.addEventListener('mousedown',e=>{drag=true;wasDragging=false;ds={x:e.clientX,y:e.clientY};vs={x:vx,y:vy};});
+window.addEventListener('mouseup',()=>{drag=false;});
+window.addEventListener('mousemove',e=>{
+  if(!drag)return;
+  const dx=e.clientX-ds.x,dy=e.clientY-ds.y;
+  if(Math.abs(dx)>3||Math.abs(dy)>3)wasDragging=true;
+  vx=vs.x+dx;vy=vs.y+dy;rebuildPos();
+});
+wrap.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const f=e.deltaY<0?1.15:0.87;
+  const r=wrap.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
+  vx=mx-f*(mx-vx);vy=my-f*(my-vy);vw*=f;vh*=f;rebuildPos();
+},{passive:false});
+
+function doZoom(f){
+  const r=wrap.getBoundingClientRect();
+  const cx=r.width/2,cy=r.height/2;
+  vx=cx-f*(cx-vx);vy=cy-f*(cy-vy);vw*=f;vh*=f;rebuildPos();
+}
+function resetView(){
+  const r=wrap.getBoundingClientRect();
+  vw=r.width*.95;vh=r.height*.95;vx=r.width*.025;vy=r.height*.025;rebuildPos();
+}
+
+// ── Init ──
+if(location.hash&&location.hash.length>1)decodeState(location.hash);
+const ir=wrap.getBoundingClientRect();
+vw=ir.width*.95;vh=ir.height*.95;vx=ir.width*.025;vy=ir.height*.025;
+buildTracks();buildStations();
+if(location.hash&&location.hash.length>1)STATIONS.forEach(s=>setLv(s.id,levels[s.id]));
+updateStats();
+</script>
+</body>
+</html>
